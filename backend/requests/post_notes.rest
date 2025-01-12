@@ -2,6 +2,6 @@ POST http://localhost:3001/api/notes/
 Content-Type: application/json
 
 {
-    "content": "VR Rest is a pretty handly tool",
+    "content": "Ensure that everything still work",
     "important": true
 }
