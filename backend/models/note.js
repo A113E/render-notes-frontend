@@ -12,6 +12,11 @@ const noteSchema = new mongoose.Schema({
   },
   date: Date,        // Campo de tipo fecha que almacena la fecha de la nota.
   important: Boolean,// Campo de tipo booleano que indica si la nota es importante o no.
+  // Matriz ID con los identificadores de usuario
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }
 })
 
 // Configura cómo se debe transformar la nota cuando se convierta a formato JSON (por ejemplo, al enviarla a través de una API).

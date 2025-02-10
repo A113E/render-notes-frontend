@@ -1,115 +1,206 @@
 // Importa los hooks de React que se usarán en el componente.
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 // Importa el componente Note, que representa una nota individual.
 import Note from './components/Note'
 // Importa el componente Notification, que muestra mensajes de error o notificaciones.
 import Notification from './components/Notification'
 // Importa el componente Footer, que probablemente contiene un pie de página para la aplicación.
 import Footer from './components/Footer'
+// Importa el componente FormLogin, formulario de logeo
+import LoginForm from './components/LoginForm'
+// Importa el componente FormNote, formulario para agregar notas
+import NoteForm from './components/NoteForm'
+// Importa el componente Togglable que permite alternar la visibilidad de su contenido (cualquier componente que le pases como children).
+import Togglable from './components/Togglable'
 // Importa el servicio noteService, que contiene funciones para interactuar con un servidor (API) relacionado con las notas.
 import noteService from './services/notes'
+// Importa el servicio loginService, que contiene las funciones para interactuar con un servidor (API) para que los usuarios inicien sesión
+import loginService from './services/login'
+
 
 // Define el componente principal de la aplicación.
 const App = () => {
   // Estado para almacenar las notas. Inicialmente, es un array vacío.
   const [notes, setNotes] = useState([])
-  // Estado para almacenar el contenido de una nueva nota que se está escribiendo.
-  const [newNote, setNewNote] = useState('')
   // Estado para alternar entre mostrar todas las notas o solo las importantes.
   const [showAll, setShowAll] = useState(true)
-  // Estado para almacenar mensajes de error. Inicialmente, es null (sin mensaje).
-  const [errorMessage, setErrorMessage] = useState(null)
+ // Creamos el estado para mostrar Notificaciones
+ const [notification, setNotification] = useState({message: '', type:''}) // Toma dos parámetros el mensaje y tipo
+  // Estado para almacenar los usuarios logeados (null)
+  const [user, setUser] = useState(null)
+  const [loginVisible, setLoginVisible] = useState(false)
 
-  // Hook useEffect: se ejecuta una vez al cargar el componente para obtener todas las notas desde el servidor.
+  
+
+  const noteFormRef = useRef() // Mecanismo de ref de React, que ofrece una referencia al componente.
+
+  // Hook useEffect: se ejecuta una vez al cargar el componente para obtener todas las notas desde el servidor (async/await).
   useEffect(() => {
-    noteService
-      .getAll() // Llama a la función getAll del servicio para obtener las notas.
-      .then(initialNotes => {
-        setNotes(initialNotes) // Actualiza el estado con las notas obtenidas.
-      })
+    // Función asincrónica
+    const fetchNotes = async () => {
+      const initialNotes = await noteService.getAll() // Espera la respuesta del servidor
+      setNotes(initialNotes) // Cambiamos el estado con las notas obtenidas
+    }
+    fetchNotes() // LLamamos a la función asincrónicas
   }, []) // El array vacío asegura que esto solo se ejecute al montar el componente.
 
-  // Función para manejar la adición de una nueva nota.
-  const addNote = (event) => {
-    event.preventDefault() // Evita que el formulario recargue la página.
-    const noteObject = {
-      content: newNote, // Usa el contenido de la nueva nota del estado.
-      important: Math.random() > 0.5, // Asigna aleatoriamente si es importante.
+  // Hook  useEffect:  se ejecuta una vez al cargar el componente la aplicación verifique si los detalles de un usuario que inició sesión ya se pueden encontrar en el local storage.
+  useEffect(() => {
+    const loggedUserJSON = window.localStorage.getItem('loggedNoteappUser')
+    if (loggedUserJSON) {
+      const user = JSON.parse(loggedUserJSON)
+      setUser(user)
+      noteService.setToken(user.token)
     }
+  }, []) // El array vacío como parámetro del effect hook asegura que el hook se ejecute solo cuando el componente es renderizado por primera vez
 
-    // Llama al servicio para crear la nueva nota en el servidor.
-    noteService
-      .create(noteObject)
-      .then(returnedNote => { // Cuando se crea la nota con éxito:
-        setNotes(notes.concat(returnedNote)) // Agrega la nueva nota al estado.
-        setNewNote('') // Limpia el campo de entrada.
-      })
+  // Función para manejar las notificaciones
+  const showNotification = (message, type) => {
+    setNotification({message, type})
+    setTimeout(() => {
+      setNotification({message: '', type: ''})
+    }, 5000)
   }
 
+// Función para manejar la adición de una nueva nota.
+const addNote = async (noteObject) => {
+  try {
+    noteFormRef.current.toggleVisibility() // Ocultar el formulario llamando a noteFormRef.current.toggleVisibility() después de que se haya creado una nueva nota
+    // Llama al servicio para crear la nueva nota en el servidor.
+    const returnedNote = await noteService.create(noteObject)
+
+    // Agrega la nueva nota al estado y limpia el campo de entrada.
+    setNotes(notes.concat(returnedNote))
+
+    // Notificación de éxito
+    showNotification('Nota agregada exitosamente', 'success')
+  } catch (exception) {
+    // Notificación de error más específica
+    showNotification('Error al agregar la nota. Inténtalo de nuevo.', 'error')
+    console.error('Error al agregar la nota:', exception)
+  }
+}
+   
+
   // Función para alternar la importancia de una nota específica.
-  const toggleImportanceOf = id => {
-    const note = notes.find(n => n.id === id) // Encuentra la nota por su ID.
+const toggleImportanceOf = async (id) => {
+  const note = notes.find(n => n.id === id) // Encuentra la nota por su ID.
+
+  if (!note) {
+    showNotification(`La nota con ID ${id} no existe.`, 'error')
+    return
+  }
+
+  try {
     const changedNote = { ...note, important: !note.important } // Crea una copia con la importancia alternada.
 
     // Llama al servicio para actualizar la nota en el servidor.
-    noteService
-      .update(id, changedNote)
-      .then(returnedNote => { // Cuando la actualización es exitosa:
-        setNotes(notes.map(note => note.id !== id ? note : returnedNote)) // Actualiza la nota en el estado.
-      })
-      .catch(error => { // Maneja errores si la nota no se encuentra.
-        setErrorMessage(`Note '${note.content}' was already removed from server`) // Muestra un mensaje de error.
-        setTimeout(() => { // El mensaje desaparece después de 5 segundos.
-          setErrorMessage(null)
-        }, 5000)
-      })
-  }
+    const returnedNote = await noteService.update(id, changedNote)
 
-  // Función para manejar los cambios en el campo de entrada para una nueva nota.
-  const handleNoteChange = (event) => {
-    setNewNote(event.target.value) // Actualiza el estado con el valor del campo de entrada.
+    // Actualiza la nota en el estado.
+    setNotes(notes.map(n => n.id !== id ? n : returnedNote))
+  } catch (exception) {
+    showNotification(`La nota '${note.content}' ya fue eliminada del servidor.`, 'error') // Notificación de error
+    console.error('Error al actualizar la nota:', exception)
   }
+}
+
+  
+  
+  
+
+ 
 
   // Calcula las notas a mostrar según el estado de showAll.
   const notesToShow = showAll
     ? notes // Si showAll es true, muestra todas las notas.
     : notes.filter(note => note.important) // Si showAll es false, solo muestra las importantes.
 
+    // Función para eliminar notas
+const handleDelete = async (id) => {
+  
+    try {
+    const noteToDelete = notes.find(note => note.id === id)
+
+    if(!noteToDelete) {
+      showNotification('Note not found. Please refresh and try again.', 'error')
+    }
+
+    if (window.confirm(`¿Estás seguro de que deseas eliminar la nota: "${noteToDelete.content}"?`)) {
+      await noteService.remove(id) // Elimina la nota en el servidor
+
+      // Actualiza el estado eliminando la nota
+      setNotes(notes.filter(note => note.id !== id))
+
+      // Notificación de éxito
+      showNotification(`Nota "${noteToDelete.content}" eliminada exitosamente.`, 'success')
+    }
+  } catch (exception) {
+    // Notificación de error en caso de fallo
+    showNotification(`Error al eliminar la nota. Inténtalo de nuevo.`, 'error')
+    console.error('Error al eliminar la nota:', exception)
+  }
+}
+
+      
+  
+
+    // Función para manejar el inicio de sesión (Login)
+    const handleLogin = async ({ username, password }) => {
+      try {
+        const user = await loginService.login({ username, password })
+    
+        window.localStorage.setItem('loggedNoteappUser', JSON.stringify(user))
+        noteService.setToken(user.token)
+        setUser(user)
+        showNotification(`Welcome back, ${user.name || user.username}!`, 'success')
+      } catch (exception) {
+        showNotification('Invalid username or password. Please try again.', 'error')
+        console.error('Login error:', exception)
+      }
+    }
+        
   // El código JSX que define el diseño y funcionalidad del componente.
   return (
     <div>
       <h1>Notes</h1>
-      {/* Muestra el componente Notification con el mensaje actual. */}
-      <Notification message={errorMessage} />
-      <div>
-        {/* Botón para alternar entre mostrar todas las notas o solo las importantes. */}
-        <button onClick={() => setShowAll(!showAll)}>
-          show {showAll ? 'important' : 'all'}
-        </button>
+      <Notification message={notification.message} type={notification.type}/>  
+
+      {!user && 
+      <LoginForm
+      userLogged={handleLogin}
+      loginVisible={loginVisible}
+      setLoginVisible={setLoginVisible}
+    />}
+      {user && <div>
+       <p>{user.name} logged in</p>
+       <Togglable buttonLabel="new note" ref={noteFormRef}>
+       <NoteForm createNote={addNote} />
+      </Togglable>
       </div>
-      {/* Lista de notas. */}
+     } 
+
+      <div>
+        <button onClick={() => setShowAll(!showAll)}>
+          show {showAll ? 'important' : 'all' }
+        </button>
+      </div>      
       <ul>
         {notesToShow.map(note => 
           <Note
-            key={note.id} // Cada nota debe tener un key único.
-            note={note} // Pasa la nota como propiedad al componente Note.
-            toggleImportance={() => toggleImportanceOf(note.id)} // Función para alternar la importancia.
+            key={note.id}
+            note={note}
+            toggleImportance={() => toggleImportanceOf(note.id)}
+            onDelete={handleDelete}
           />
         )}
       </ul>
-      {/* Formulario para agregar una nueva nota. */}
-      <form onSubmit={addNote}>
-        <input
-          value={newNote} // Vincula el valor del campo de entrada al estado newNote.
-          onChange={handleNoteChange} // Llama a handleNoteChange cuando cambia el valor.
-        />
-        <button type="submit">save</button> {/* Botón para enviar el formulario. */}
-      </form>
-      {/* Componente Footer para mostrar el pie de página. */}
       <Footer />
     </div>
   )
 }
+  
+
 
 // Exporta el componente App para ser usado en otros archivos.
 export default App

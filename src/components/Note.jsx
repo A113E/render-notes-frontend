@@ -2,7 +2,7 @@
 // Recibe dos props:
 // - `note`: Un objeto que representa una nota (con propiedades como `content` e `important`).
 // - `toggleImportance`: Una función que cambia la importancia de la nota cuando se hace clic en el botón.
-const Note = ({ note, toggleImportance }) => {
+const Note = ({ note, toggleImportance, onDelete }) => {
 
     // Determina el texto del botón según el estado de `important` de la nota.
     // Si `note.important` es true, el botón mostrará "make not important".
@@ -22,6 +22,8 @@ const Note = ({ note, toggleImportance }) => {
         {/* Botón para cambiar la importancia de la nota.
             Al hacer clic, ejecuta la función `toggleImportance`.
             El texto del botón está determinado por `label`. */}
+       <button onClick={(event) => onDelete(note.id, event)}>delete</button>
+
       </li>
     );
 };
